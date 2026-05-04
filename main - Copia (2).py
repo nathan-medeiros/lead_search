@@ -27,7 +27,7 @@ class Place:
 
 def setup_logging():
     logging.basicConfig(
-        level=logging.ERROR,
+        level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
     )
 
@@ -120,15 +120,15 @@ def extract_place(page: Page) -> Place:
 
     return place
 
-def scrape_places(search_for: str, total: int, is_headless: bool = False) -> List[Place]:
+def scrape_places(search_for: str, total: int) -> List[Place]:
     setup_logging()
     places: List[Place] = []
     with sync_playwright() as p:
         if platform.system() == "Windows":
             browser_path = r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-            browser = p.chromium.launch(executable_path=browser_path, headless=is_headless)
+            browser = p.chromium.launch(executable_path=browser_path, headless=False)
         else:
-            browser = p.chromium.launch(headless=is_headless)
+            browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         try:
             # Centraliza no Brasil com zoom inicial 5z (vê o país todo)
@@ -154,6 +154,29 @@ def scrape_places(search_for: str, total: int, is_headless: bool = False) -> Lis
             # Espera carregar os primeiros resultados
             page.wait_for_selector('//a[contains(@href, "https://www.google.com/maps/place")]')
             
+            # Tira o foco da barra de busca para que o '-' não seja digitado nela
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(1000)
+            
+            # Tecla Tab para garantir o foco nos controles do mapa
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(500)
+
+            # Amplia a área com zoom out DEPOIS que a pesquisa foi feita
+            for _ in range(2): 
+                page.keyboard.press("-")
+                page.wait_for_timeout(1000)
+
+            # Clica no botão "Pesquisar nesta área" para atualizar os resultados na nova abrangência
+            try:
+                # O texto pode variar, então tentamos por texto ou classe comum
+                search_this_area_xpath = '//button[contains(., "Pesquisar nesta área")] | //button[contains(., "Search this area")]'
+                if page.locator(search_this_area_xpath).count() > 0:
+                    page.locator(search_this_area_xpath).first.click()
+                    page.wait_for_timeout(2000)
+            except Exception as e:
+                logging.info("Botão 'Pesquisar nesta área' não encontrado ou não necessário.")
+
             page.hover('//a[contains(@href, "https://www.google.com/maps/place")]')
             previously_counted = 0
             while True:
@@ -207,44 +230,16 @@ def save_places_to_csv(places: List[Place], output_path: str = "result.csv", app
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--search", type=str, help="Search query for Google Maps")
-    parser.add_argument("-f", "--file", type=str, help="Path to a text file containing search queries (one per line)")
-    parser.add_argument("-t", "--total", type=int, help="Total number of results to scrape per query")
+    parser.add_argument("-t", "--total", type=int, help="Total number of results to scrape")
     parser.add_argument("-o", "--output", type=str, default="result.csv", help="Output CSV file path")
     parser.add_argument("--append", action="store_true", help="Append results to the output file instead of overwriting")
-    parser.add_argument("--oculto", action="store_true", help="Rodar o navegador em modo invisível (segundo plano)")
     args = parser.parse_args()
-    
+    search_for = args.search or "turkish stores in toronto Canada"
     total = args.total or 50
     output_path = args.output
-    
-    queries = []
-    if args.file:
-        try:
-            with open(args.file, 'r', encoding='utf-8') as f:
-                queries = [line.strip() for line in f if line.strip()]
-            logging.info(f"Loaded {len(queries)} queries from {args.file}")
-        except Exception as e:
-            logging.error(f"Failed to read file {args.file}: {e}")
-            return
-    elif args.search:
-        queries = [args.search]
-    else:
-        queries = ["turkish stores in toronto Canada"]
-        
-    for i, search_for in enumerate(queries):
-        # Imprime o início e mantém o cursor na mesma linha (end="")
-        print(f"Iniciando busca - {search_for}", end="", flush=True)
-        
-        places = scrape_places(search_for, total, is_headless=args.oculto)
-        
-        # Se for o primeiro item da lista e o usuário não pediu append explícito, sobrescreve. 
-        # Do segundo item em diante, sempre adiciona ao arquivo existente para não perder os dados anteriores.
-        current_append = True if args.append or i > 0 else False
-        
-        save_places_to_csv(places, output_path, append=current_append)
-        
-        # Imprime a conclusão na mesma linha
-        print(" - Concluído")
+    append = args.append
+    places = scrape_places(search_for, total)
+    save_places_to_csv(places, output_path, append=append)
 
 if __name__ == "__main__":
     main()

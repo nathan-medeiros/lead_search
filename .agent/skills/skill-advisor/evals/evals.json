@@ -1,0 +1,23 @@
+{
+  "skill_name": "skill-advisor",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Quero uma skill para gerar imagens usando DALL-E.",
+      "expected_output": "Deve listar skills de DALL-E/OpenAI, mostrar tabela com installs e risco, e recomendar a melhor.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Procuro uma skill de análise de sentimentos em português.",
+      "expected_output": "Deve encontrar skills de NLP/análise de sentimentos e avaliar se suportam português na descrição.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Quais as melhores skills para automação de browser?",
+      "expected_output": "Deve comparar skills como Puppeteer, Playwright ou Selenium se disponíveis, focando em popularidade e segurança.",
+      "files": []
+    }
+  ]
+}

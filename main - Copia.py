@@ -1,5 +1,4 @@
 import logging
-import re
 from typing import List, Optional
 from playwright.sync_api import sync_playwright, Page
 from dataclasses import dataclass, asdict
@@ -23,11 +22,10 @@ class Place:
     place_type: str = ""
     opens_at: str = ""
     introduction: str = ""
-    whatsapp_number: str = ""
 
 def setup_logging():
     logging.basicConfig(
-        level=logging.ERROR,
+        level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
     )
 
@@ -67,8 +65,7 @@ def extract_place(page: Page) -> Place:
     reviews_count_raw = extract_text(page, reviews_count_xpath)
     if reviews_count_raw:
         try:
-            # Remove parênteses, pontos, vírgulas e qualquer caractere não numérico
-            temp = re.sub(r'\D', '', reviews_count_raw)
+            temp = reviews_count_raw.replace('\xa0', '').replace('(','').replace(')','').replace(',','')
             place.reviews_count = int(temp)
         except Exception as e:
             logging.warning(f"Failed to parse reviews count: {e}")
@@ -109,70 +106,45 @@ def extract_place(page: Page) -> Place:
                 place.opens_at = opens[1].replace("\u202f","")
             else:
                 place.opens_at = opens_at2_raw.replace("\u202f","")
-    
-    # WhatsApp Formatting
-    if place.phone_number:
-        clean_phone = re.sub(r'\D', '', place.phone_number)
-        if len(clean_phone) in [10, 11]: # Brazilian number without country code
-            clean_phone = "55" + clean_phone
-        if clean_phone:
-            place.whatsapp_number = clean_phone
-
     return place
 
-def scrape_places(search_for: str, total: int, is_headless: bool = False) -> List[Place]:
+def scrape_places(search_for: str, total: int) -> List[Place]:
     setup_logging()
     places: List[Place] = []
     with sync_playwright() as p:
         if platform.system() == "Windows":
             browser_path = r"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-            browser = p.chromium.launch(executable_path=browser_path, headless=is_headless)
+            browser = p.chromium.launch(executable_path=browser_path, headless=False)
         else:
-            browser = p.chromium.launch(headless=is_headless)
+            browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         try:
-            # Centraliza no Brasil com zoom inicial 5z (vê o país todo)
-            page.goto("https://www.google.com/maps/@-14.235,-51.925,5z", timeout=60000)
+            page.goto("https://www.google.com/maps/@32.9817464,70.1930781,3.67z?", timeout=60000)
             page.wait_for_timeout(1000)
-            
+#           page.locator('//input[@id="searchboxinput"]').fill(search_for)
             # 1. Dá um tempo para a página respirar
-            page.wait_for_timeout(5000)
-
+            page.wait_for_timeout(5000) 
             # 2. Em vez de buscar por ID, vamos pressionar '/' (atalho do Google Maps para busca)
+            # ou simplesmente clicar em uma coordenada onde o campo costuma estar
             page.keyboard.press("/") 
             page.wait_for_timeout(1000)
-            
-            # Limpa a '/' que o atalho digita antes de inserir a busca
-            page.keyboard.press("Backspace")
-            page.wait_for_timeout(500)
-
             # 3. Digita a busca diretamente
             page.keyboard.type(search_for, delay=100)
             page.keyboard.press("Enter")
             page.keyboard.press("Enter")
-            
-            # Espera carregar os primeiros resultados
             page.wait_for_selector('//a[contains(@href, "https://www.google.com/maps/place")]')
-            
             page.hover('//a[contains(@href, "https://www.google.com/maps/place")]')
             previously_counted = 0
             while True:
                 page.mouse.wheel(0, 10000)
-                page.wait_for_timeout(3000) # Espera o conteúdo carregar
-                
+                page.wait_for_selector('//a[contains(@href, "https://www.google.com/maps/place")]')
                 found = page.locator('//a[contains(@href, "https://www.google.com/maps/place")]').count()
                 logging.info(f"Currently Found: {found}")
-                
                 if found >= total:
                     break
-                
                 if found == previously_counted:
-                    # Se não mudou, espera mais um pouco e tenta de novo (pode ser lentidão do Google)
-                    page.wait_for_timeout(3000)
-                    found = page.locator('//a[contains(@href, "https://www.google.com/maps/place")]').count()
-                    if found == previously_counted:
-                        logging.info("Arrived at all available")
-                        break
+                    logging.info("Arrived at all available")
+                    break
                 previously_counted = found
             listings = page.locator('//a[contains(@href, "https://www.google.com/maps/place")]').all()[:total]
             listings = [listing.locator("xpath=..") for listing in listings]
@@ -181,7 +153,7 @@ def scrape_places(search_for: str, total: int, is_headless: bool = False) -> Lis
                 try:
                     listing.click()
                     page.wait_for_selector('//div[@class="TIHn2 "]//h1[@class="DUwDvf lfPIob"]', timeout=10000)
-                    time.sleep(3)  # Espera 3 segundos para garantir que os dados atualizaram
+                    time.sleep(1.5)  # Give time for details to load
                     place = extract_place(page)
                     if place.name:
                         places.append(place)
@@ -196,6 +168,9 @@ def scrape_places(search_for: str, total: int, is_headless: bool = False) -> Lis
 def save_places_to_csv(places: List[Place], output_path: str = "result.csv", append: bool = False):
     df = pd.DataFrame([asdict(place) for place in places])
     if not df.empty:
+        for column in df.columns:
+            if df[column].nunique() == 1:
+                df.drop(column, axis=1, inplace=True)
         file_exists = os.path.isfile(output_path)
         mode = "a" if append else "w"
         header = not (append and file_exists)
@@ -207,44 +182,16 @@ def save_places_to_csv(places: List[Place], output_path: str = "result.csv", app
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-s", "--search", type=str, help="Search query for Google Maps")
-    parser.add_argument("-f", "--file", type=str, help="Path to a text file containing search queries (one per line)")
-    parser.add_argument("-t", "--total", type=int, help="Total number of results to scrape per query")
+    parser.add_argument("-t", "--total", type=int, help="Total number of results to scrape")
     parser.add_argument("-o", "--output", type=str, default="result.csv", help="Output CSV file path")
     parser.add_argument("--append", action="store_true", help="Append results to the output file instead of overwriting")
-    parser.add_argument("--oculto", action="store_true", help="Rodar o navegador em modo invisível (segundo plano)")
     args = parser.parse_args()
-    
-    total = args.total or 50
+    search_for = args.search or "turkish stores in toronto Canada"
+    total = args.total or 1
     output_path = args.output
-    
-    queries = []
-    if args.file:
-        try:
-            with open(args.file, 'r', encoding='utf-8') as f:
-                queries = [line.strip() for line in f if line.strip()]
-            logging.info(f"Loaded {len(queries)} queries from {args.file}")
-        except Exception as e:
-            logging.error(f"Failed to read file {args.file}: {e}")
-            return
-    elif args.search:
-        queries = [args.search]
-    else:
-        queries = ["turkish stores in toronto Canada"]
-        
-    for i, search_for in enumerate(queries):
-        # Imprime o início e mantém o cursor na mesma linha (end="")
-        print(f"Iniciando busca - {search_for}", end="", flush=True)
-        
-        places = scrape_places(search_for, total, is_headless=args.oculto)
-        
-        # Se for o primeiro item da lista e o usuário não pediu append explícito, sobrescreve. 
-        # Do segundo item em diante, sempre adiciona ao arquivo existente para não perder os dados anteriores.
-        current_append = True if args.append or i > 0 else False
-        
-        save_places_to_csv(places, output_path, append=current_append)
-        
-        # Imprime a conclusão na mesma linha
-        print(" - Concluído")
+    append = args.append
+    places = scrape_places(search_for, total)
+    save_places_to_csv(places, output_path, append=append)
 
 if __name__ == "__main__":
     main()
