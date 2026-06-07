@@ -2,4 +2,12 @@ __pycache__/
 *.pyc
 result.csv
 output.csv
-playwright/.cache/ 
+playwright/.cache/
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

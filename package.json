@@ -1,0 +1,23 @@
+{
+  "name": "google-maps-scrapper",
+  "version": "1.0.0",
+  "description": "This Python script utilizes the Playwright library to perform web scraping and data extraction from Google Maps. It is particularly designed for obtaining information about businesses, including their name, address, website, phone number, reviews, and more.",
+  "main": "index.js",
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nathan-medeiros/lead_search.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/nathan-medeiros/lead_search/issues"
+  },
+  "homepage": "https://github.com/nathan-medeiros/lead_search#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.2"
+  }
+}

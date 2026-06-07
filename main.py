@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import List, Optional
+# pyrefly: ignore [missing-import]
 from playwright.sync_api import sync_playwright, Page
 from dataclasses import dataclass, asdict
 import pandas as pd
@@ -205,13 +206,14 @@ def save_places_to_csv(places: List[Place], output_path: str = "result.csv", app
         logging.warning("No data to save. DataFrame is empty.")
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("-s", "--search", type=str, help="Search query for Google Maps")
     parser.add_argument("-f", "--file", type=str, help="Path to a text file containing search queries (one per line)")
     parser.add_argument("-t", "--total", type=int, help="Total number of results to scrape per query")
     parser.add_argument("-o", "--output", type=str, default="result.csv", help="Output CSV file path")
-    parser.add_argument("--append", action="store_true", help="Append results to the output file instead of overwriting")
-    parser.add_argument("--oculto", action="store_true", help="Rodar o navegador em modo invisível (segundo plano)")
+    parser.add_argument("-a", "--append", action="store_true", help="Append results to the output file instead of overwriting")
+    parser.add_argument("-h", "--oculto", action="store_true", help="Rodar o navegador em modo invisível (segundo plano)")
+    parser.add_argument("--help", action="help", help="Show this help message and exit")
     args = parser.parse_args()
     
     total = args.total or 50
